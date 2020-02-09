@@ -1,12 +1,20 @@
 const { Client, Collection, RichEmbed } = require('discord.js');
+const chalk = require('chalk');
 require('dotenv').config();
 
 const client = new Client();
 const newUsers = new Collection();
 const prefix = '!';
 
+client.commands = new Collection();
+client.aliases = new Collection();
+
+['command'].forEach(handler => {
+    require(`./handler/${handler}`)(client);
+});
+
 client.on('ready', () => {
-    console.log(`Logged in as ${client.user.tag}!`);
+    console.log(`Logged in as ${chalk.blue.underline.bold(client.user.tag)}`);
 });
 
 client.on('guildCreate', guild => {
@@ -38,9 +46,12 @@ client.on('guildMemberRemove', member => {
 });
 
 client.on('message', async msg => {
-    if (!msg.guild) return; // exit if msg is not from this serv
-    if (!msg.content.startsWith(prefix)) return; // exit if msg don't start with {prefix}
-    if (msg.author.bot) return; // exit if msg is from bot
+    if (!msg.guild) return;
+    if (!msg.content.startsWith(prefix)) return;
+    if (msg.author.bot) return;
+
+    // If msg.member is uncached, cache it.
+    if (!msg.member) msg.member = await msg.guild.fetchMember(msg);
 
     const args = msg.content
         .slice(prefix.length)
@@ -48,31 +59,15 @@ client.on('message', async msg => {
         .split(/ +/g);
     const cmd = args.shift().toLowerCase();
 
-    switch (cmd) {
-        case 'ping':
-            msg.reply('Pong!');
-            break;
-        case 'scrim':
-            // !scrim [time] [map] [rank] [description]
-            const [time, map, rank, ...description] = args;
+    if (cmd.length === 0) return;
 
-            const ScrimRichEmbed = new RichEmbed()
-                .setColor(3447003)
-                .setAuthor(msg.author.username, msg.author.avatarURL)
-                .setTitle('Looking for Scrim')
-                .setURL('http://google.com')
-                .setDescription(description.join(' '))
-                .addField('Time', time, true)
-                .addField('Map', map, true)
-                .addField('Rank', rank, true)
-                .setTimestamp()
-                .setFooter('© lfesports.com', client.user.avatarURL);
+    // Get the command
+    let command = client.commands.get(cmd);
+    // If none is found, try to find it by alias
+    if (!command) command = client.commands.get(client.aliases.get(cmd));
 
-            msg.channel.send(ScrimRichEmbed).then(function(msg) {
-                msg.react('\u{1F440}');
-            });
-            break;
-    }
+    // If a command is finally found, run the command
+    if (command) command.run(client, msg, args);
 });
 
 client.login(process.env.token);
